@@ -90,41 +90,44 @@ function fetch(cursor, seller, producent, x){
 			
 			return ready.then(()=>{
 				
-				let newProducts = sellers[seller][producent]
-				.filter((product)=>{
-					if(product.alreadyInDb) return false;
-					
-					return true;
-				})
-				.map((product)=>{
-					return {
-						...product,
-						createdAt: new Date()
-					}
-				});
-				
-				if(newProducts.length>0){
-					return productsCollection.insertMany(newProducts)
-					.then((res)=>{
-						console.log(res);
-					})
-				}
-				
-				return;
-			})
-			.then(()=>{
-				
 				return true;
 			})
 			
 		})
-		.then((toBeContinued)=>{
+
+	})
+	.then((toBeContinued)=>{
+		
+		if(toBeContinued) return fetch(cursor, seller, producent, x);
+		
+		//recurrency exit
+		//documents from all chunksare fetched, all documents that are marked as alreadyInDb are filtered and new documents are inserted
+		
+		return ready.then(()=>{
 			
-			if(toBeContinued) return fetch(cursor, seller, producent, x);
+			let newProducts = sellers[seller][producent]
+			.filter((product)=>{
+				if(product.alreadyInDb) return false;
+				
+				return true;
+			})
+			.map((product)=>{
+				return {
+					...product,
+					createdAt: new Date()
+				}
+			});
+			
+			if(newProducts.length>0){
+				return productsCollection.insertMany(newProducts)
+				.then((res)=>{
+					console.log(res);
+				})
+			}
 			
 			return;
-		})
-
+		});
+		
 	})
 	
 }
