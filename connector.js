@@ -168,6 +168,84 @@ function updateModifiedAndInsertNew(){
 	
 }
 
+function deleteDuplicates(){
+	
+	const pricetop = mongoClient.db();
+	
+	productsCollection = pricetop.collection("products");
+	
+	const aggregation = 
+	[
+	  {
+		'$group': {
+		  '_id': {
+			'seller': '$seller', 
+			'producent': '$producent', 
+			'code': '$code'
+		  }, 
+				'$addToSet': '$_id'
+		  }
+		}
+	  'ids': {
+	  }, {
+		'$project': {
+		  'ids': true, 
+		  'duplicate': {
+			'$gt': [
+			  {
+				'$size': '$ids'
+			  }, 1
+			]
+		  }, 
+		  'size': {
+			'$size': '$ids'
+		  }
+		}
+	  }, {
+		'$match': {
+		  'duplicate': true
+		}
+	  }, {
+		'$project': {
+		  'ids': {
+			'$slice': [
+			  '$ids', 1, {
+				'$add': [
+				  {
+					'$size': '$ids'
+				  }, -1
+				]
+			  }
+			]
+		  }
+		}
+	  }
+	];
+	
+	
+	const cursor = productsCollection.aggregate(aggregation);
+	
+	let idsDesiredToDeletion = [];
+	
+	cursor.toArray()
+	.then((docs)=>{
+		
+		for(let doc of docs){
+			console.log(doc);
+			idsDesiredToDeletion = [...idsDesiredToDeletion, ...doc.ids];
+		}
+		
+	})
+	.then(()=>{
+		
+		return productsCollection.deleteMany({ _id: { $in: idsDesiredToDeletion } })
+		.then((res)=>{
+			console.log(res);
+		})
+	})
+	
+}
+
 dbReady.then((client)=>{
 	
 	updateModifiedAndInsertNew()
