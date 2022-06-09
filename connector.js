@@ -42,7 +42,6 @@ for(let filename of fs.readdirSync(path.resolve(""))){
 
 const url = "mongodb://u:p@host.com/dbname";
 
-
 const mongoClient = new MongoClient(url);
 
 const dbReady = mongoClient.connect();
@@ -103,49 +102,42 @@ function fetch(cursor, seller, producent, x){
 		//recurrency exit
 		//documents from all chunksare fetched, all documents that are marked as alreadyInDb are filtered and new documents are inserted
 		
-		return ready.then(()=>{
+		let newProducts = sellers[seller][producent]
+		.filter((product)=>{
+			if(product.alreadyInDb) return false;
 			
-			let newProducts = sellers[seller][producent]
-			.filter((product)=>{
-				if(product.alreadyInDb) return false;
-				
-				return true;
-			})
-			.map((product)=>{
-				return {
-					...product,
-					createdAt: new Date()
-				}
-			});
-			
-			if(newProducts.length>0){
-				return productsCollection.insertMany(newProducts)
-				.then((res)=>{
-					console.log(res);
-				})
+			return true;
+		})
+		.map((product)=>{
+			return {
+				...product,
+				createdAt: new Date()
 			}
-			
-			return;
 		});
 		
-	})
+		if(newProducts.length>0){
+			return productsCollection.insertMany(newProducts)
+			.then((res)=>{
+				console.log(res);
+			})
+		}
+		
+	});
 	
 }
 
-dbReady.then((client)=>{
+function updateModifiedAndInsertNew(){ 
 	
-	const pricetop = client.db();
+	const pricetop = mongoClient.db();
 	
 	productsCollection = pricetop.collection("products");
-	
-	console.log(client === mongoClient);
 	
 	let ready = Promise.resolve();
 	
 	for(let seller in sellers){
 		
 		for(let producent in sellers[seller]){
-
+			
 			ready = ready.then(()=>{
 				
 				const cursor = productsCollection.aggregate([
@@ -164,8 +156,7 @@ dbReady.then((client)=>{
 					}
 				]);
 				
-				console.log(seller);
-				console.log(producent);
+
 								
 				return fetch(cursor, seller, producent, 0);
 				
@@ -174,6 +165,12 @@ dbReady.then((client)=>{
 		}
 		
 	}
+	
+}
+
+dbReady.then((client)=>{
+	
+	updateModifiedAndInsertNew()
 	
 });
 
