@@ -40,64 +40,62 @@ for(let filename of fs.readdirSync(path.resolve(""))){
 }
 
 
-const url = "mongodb://u:p@host.com/dbname";
+const url = "mongodb://u:p@host.com:27017/db";
 
 const mongoClient = new MongoClient(url);
 
 const dbReady = mongoClient.connect();
 
-function fetch(cursor, seller, producent, x){
-	
-	return cursor.hasNext()
-	.then((hasNext)=>{
-		
-		if(!hasNext) return false;
-		
-		cursor.rewind();
+let today = new Date();
 
-		return cursor.skip(x++*100).limit(100)
-		.toArray()
-		.then((docs)=>{
+function fetch( seller, producent, x){
+	
+	cursor = getCursor(seller, producent, x++);
+	
+	return cursor.toArray()
+	.then((docs)=>{
+		
+		if(docs.length == 0) return false;
+
+		console.log("fetched " + docs.length + " documents");
+		
+		let ready = Promise.resolve();
+		
+		for(let doc of docs){
 			
-			console.log("fetched " + docs.length + " documents");
-			
-			let ready = Promise.resolve();
-			
-			for(let doc of docs){
+			for(let product of sellers[seller][producent]){
 				
-				for(let product of sellers[seller][producent]){
+				ready = ready.then(()=>{
 					
-					ready = ready.then(()=>{
+					if(product.code == doc.code){
+						product.alreadyInDb = true
+					}
+				
+					if(product.code == doc.code && product.price != doc.price){
 						
-						if(product.code == doc.code){
-							product.alreadyInDb = true
-						}
-					
-						if(product.code == doc.code && product.price != doc.price){
-							
-							console.log(product.code);
-							console.log(doc.price + " --> " + product.price)
-							
-							return productsCollection.updateOne( {_id: new ObjectID(doc._id) }, {$set: {price: product.price, updatedAt: new Date()}})
-						}
+						console.log(product.code);
+						console.log(doc.price + " --> " + product.price)
 						
-					})
+						return productsCollection.updateOne( {_id: new ObjectID(doc._id) }, {$set: {price: product.price, updatedAt: today}})
+					}
 					
-				}
+				})
 				
 			}
 			
-			return ready.then(()=>{
-				
-				return true;
-			})
+		}
+		
+		return ready.then(()=>{
 			
+			return true;
 		})
 
 	})
 	.then((toBeContinued)=>{
 		
-		if(toBeContinued) return fetch(cursor, seller, producent, x);
+		cursor.close()
+		
+		if(toBeContinued) return fetch( seller, producent, x);
 		
 		//recurrency exit
 		//documents from all chunksare fetched, all documents that are marked as alreadyInDb are filtered and new documents are inserted
@@ -111,18 +109,47 @@ function fetch(cursor, seller, producent, x){
 		.map((product)=>{
 			return {
 				...product,
-				createdAt: new Date()
+				createdAt: today
 			}
 		});
 		
 		if(newProducts.length>0){
+			
 			return productsCollection.insertMany(newProducts)
 			.then((res)=>{
-				console.log(res);
-			})
+				console.log(newProducts);
+				console.log("nowe rekordy: " + res.insertedCount);
+			});
 		}
 		
 	});
+	
+}
+
+function getCursor(seller, producent, x){
+	
+	return productsCollection.aggregate([
+		{
+			$match: {
+				seller: seller,
+				producent: producent
+			}
+		},
+		{
+			$project: {
+				_id: 1,
+				code: 1,
+				price: 1
+			}
+		},
+		{
+			$skip: x*100
+		},
+		{
+			$limit: 100
+		}
+	]);
+					
 	
 }
 
@@ -140,26 +167,7 @@ function updateModifiedAndInsertNew(){
 			
 			ready = ready.then(()=>{
 				
-				const cursor = productsCollection.aggregate([
-					{
-						$match: {
-							seller: seller,
-							producent: producent
-						}
-					},
-					{
-						$project: {
-							_id: 1,
-							code: 1,
-							price: 1
-						}
-					}
-				]);
-				
-
-								
-				return fetch(cursor, seller, producent, 0);
-				
+				return fetch( seller, producent, 0);
 			})
 
 		}
@@ -183,11 +191,9 @@ function deleteDuplicates(){
 			'producent': '$producent', 
 			'code': '$code'
 		  }, 
-				'$addToSet': '$_id'
-		  }
+			'ids':	{ '$addToSet': '$_id' }
 		}
-	  'ids': {
-	  }, {
+		}, {
 		'$project': {
 		  'ids': true, 
 		  'duplicate': {
@@ -231,7 +237,6 @@ function deleteDuplicates(){
 	.then((docs)=>{
 		
 		for(let doc of docs){
-			console.log(doc);
 			idsDesiredToDeletion = [...idsDesiredToDeletion, ...doc.ids];
 		}
 		
